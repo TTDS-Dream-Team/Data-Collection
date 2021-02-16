@@ -1,5 +1,6 @@
 import json
 import zlib
+import time
 import base64
 import requests
 from bs4 import BeautifulSoup
@@ -32,7 +33,7 @@ class Book:
         self.image_url = self.get_image_url()
         self.title = self.get_book_title()
         self.publication_year = self.get_publication_year()
-        self.reviews = self.get_reviews()
+        self.reviews, self.review_ratings = self.get_reviews()
         self.review_count = self.get_review_count()
 
     def get_soup(self, url):
@@ -143,22 +144,38 @@ class Book:
 
         return reviewCount.strip()
 
+    def get_review_rating_num(self, review_rating):
+        if (review_rating == "it was amazing"):
+            return 5
+        elif (review_rating == "really liked it"):
+            return 4
+        elif (review_rating == "liked it"):
+            return 3
+        elif (review_rating == "it was ok"):
+            return 2
+        else:
+            return 1
+
     def get_reviews(self):
         """
         Returns a list of all compressed review texts
         for the current book
         """
-        reviews = self.soup.findAll('span', class_="readable")
+        reviews = self.soup.findAll('div', class_="left bodycol")
         review_texts = []
-        review_ratings = []
+        review_ratings = {}
         for review in reviews:
             review_text = review.find('span', style="display:none")
             if not review_text is None:
                 compressed_text = zlib.compress(bytes(review_text.text.strip(), 'utf-8'))
+
                 review_texts.append(compressed_text)
 
-                review_rating = # DO THIS BIT!!!!
-                review_ratings.append(review_rating)
+                review_rating = review.find('span', class_="staticStars notranslate")['title']
+
+                rating = self.get_review_rating_num(review_rating)
+
+                review_ratings[compressed_text] = rating
 
         return review_texts, review_ratings
 
@@ -184,6 +201,7 @@ class Book:
             review_json['url'] = self.url
             review_json['description'] = self.description
             review_json['review_text'] = review
+            review_json['rating'] = self.review_ratings[review]
             review_json['book_title'] = self.title
 
             array_JSON.append(review_json)
@@ -224,6 +242,8 @@ def get_book_urls():
 
 def main():
 
+    start = time.process_time()
+
     # Connect to Mongo client
     client = MongoClient("mongodb+srv://cluster0.pdjrf.mongodb.net/Reviews_Data",
         username='CalumMcM',
@@ -243,6 +263,8 @@ def main():
         book_reviews = Book.construct_JSON(webScraperPage)
 
         Book.upload(webScraperPage, book_reviews)
+
+    print("FINISHED IN: {:.2f} Seconds".format(time.process_time() - start))
 
 if __name__ == "__main__":
 
