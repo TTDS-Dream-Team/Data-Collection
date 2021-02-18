@@ -26,6 +26,10 @@ class Book:
 
         self.soup = self.get_soup(url)
         self.url = url
+        self.content = self.check_url(url)
+        self.count = count
+
+    def get_fields(self):
         self.description = self.get_description()
         self.author = self.get_author()
         self.book_id = self.get_book_id()
@@ -36,7 +40,7 @@ class Book:
         self.publication_year = self.get_publication_year()
         self.reviews, self.review_ratings = self.get_reviews()
         self.review_count = self.get_review_count()
-        self.review_id = self.get_review_id(count)
+        self.review_id = self.get_review_id()
 
     def get_soup(self, url):
         """
@@ -48,6 +52,21 @@ class Book:
         soup = BeautifulSoup(page.content, 'html.parser')
 
         return soup
+
+    def check_url(self, url):
+        """
+        Given a url for a book checks if it has any content
+        """
+
+        descriptionDiv = self.soup.find(id='description')
+
+        if (descriptionDiv is None):
+
+            print (bcolors.FAIL + "\n\nSKIPPED BOOK REASON:\n\t\t NO CONTENT\n\n" + bcolors.ENDC)
+            return False
+
+        else:
+            return True
 
     def get_author(self):
         """
@@ -167,13 +186,13 @@ class Book:
         else:
             return 1
 
-    def get_review_id(self, count):
+    def get_review_id(self):
 
         today = date.today()
 
         d = today.strftime("%d%m%Y")
 
-        return d+str(count)
+        return d+str(self.count)
 
     def get_reviews(self):
         """
@@ -239,7 +258,7 @@ class Book:
 
         if self.isbn == "Missing":
             print (bcolors.FAIL + "\n\nSKIPPED BOOK REASON:\n\t\t MISSING ISBN\n\n" + bcolors.ENDC)
-        if len(array_reviews) == 0:
+        elif len(array_reviews) == 0:
             print (bcolors.FAIL + "\n\nSKIPPED BOOK REASON:\n\t\t NO REVIEWS\n\n" + bcolors.ENDC)
         else:
             print (bcolors.OKBLUE + "\n\nUPLOADING REVIEWS FOR {}...".format(self.title) + bcolors.ENDC)
@@ -289,9 +308,12 @@ def main():
         print (url)
         webScraperPage = Book(db, url, count)
 
-        book_reviews = Book.construct_JSON(webScraperPage)
+        if (webScraperPage.content):
+            Book.get_fields(webScraperPage)
 
-        Book.upload(webScraperPage, book_reviews)
+            book_reviews = Book.construct_JSON(webScraperPage)
+
+            Book.upload(webScraperPage, book_reviews)
 
         count += 1
 
