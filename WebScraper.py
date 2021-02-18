@@ -68,6 +68,7 @@ class Book:
         else:
             return True
 
+
     def get_author(self):
         """
         Returns the author of the book
@@ -87,7 +88,11 @@ class Book:
 
         para = descriptionDiv.find('span', style="display:none")
 
-        compressed_text = zlib.compress(bytes(para.text.strip(), 'utf-8'))
+        if para is None:
+            compressed_text = zlib.compress(bytes("No description available.", 'utf-8'))
+
+        else:
+            compressed_text = zlib.compress(bytes(para.text.strip(), 'utf-8'))
 
         return compressed_text
 
