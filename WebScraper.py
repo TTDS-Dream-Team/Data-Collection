@@ -5,6 +5,7 @@ import base64
 import requests
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
+from datetime import date
 
 class bcolors:
     HEADER = '\033[95m'
@@ -19,7 +20,7 @@ class bcolors:
 
 class Book:
 
-    def __init__(self, db, url):
+    def __init__(self, db, url, count):
 
         self.db = db
 
@@ -35,6 +36,7 @@ class Book:
         self.publication_year = self.get_publication_year()
         self.reviews, self.review_ratings = self.get_reviews()
         self.review_count = self.get_review_count()
+        self.review_id = self.get_review_id(count)
 
     def get_soup(self, url):
         """
@@ -84,9 +86,13 @@ class Book:
         """
         detailsDiv = self.soup.find('div', id="details")
 
-        date = detailsDiv.text.split("Published")[1].split()
+        if "(ISBN13" in detailsDiv.text:
+            isbnText = detailsDiv.text.split("(ISBN13:")[1].split()
 
-        isbn = [s for s in date if s.isdigit()][1]
+            isbn = [s.replace(")", "") for s in isbnText if s.replace(")", "").isdigit()][0]
+
+        else:
+            isbn = "Missing"
 
         return isbn
 
@@ -115,9 +121,14 @@ class Book:
         """
         detailsDiv = self.soup.find('div', id="details")
 
-        date = detailsDiv.text.split("Published")[1].split()
+        if "Expected" in detailsDiv.text:
+            date = detailsDiv.text.split("publication:")[1].split()
 
-        year = [s for s in date if s.isdigit()][0]
+            year = [s for s in date if s.isdigit()][0]
+        else:
+            date = detailsDiv.text.split("Published")[1].split()
+
+            year = [s for s in date if s.isdigit()][0]
 
         return year.strip()
 
@@ -156,6 +167,14 @@ class Book:
         else:
             return 1
 
+    def get_review_id(self, count):
+
+        today = date.today()
+
+        d = today.strftime("%d%m%Y")
+
+        return d+str(count)
+
     def get_reviews(self):
         """
         Returns a list of all compressed review texts
@@ -165,15 +184,17 @@ class Book:
         review_texts = []
         review_ratings = {}
         for review in reviews:
+
             review_text = review.find('span', style="display:none")
-            if not review_text is None:
+
+            review_rating = review.find('span', class_="staticStars notranslate")
+
+            if not review_text is None and not review_rating is None:
                 compressed_text = zlib.compress(bytes(review_text.text.strip(), 'utf-8'))
 
                 review_texts.append(compressed_text)
 
-                review_rating = review.find('span', class_="staticStars notranslate")['title']
-
-                rating = self.get_review_rating_num(review_rating)
+                rating = self.get_review_rating_num(review_rating['title'])
 
                 review_ratings[compressed_text] = rating
 
@@ -203,6 +224,7 @@ class Book:
             review_json['review_text'] = review
             review_json['rating'] = self.review_ratings[review]
             review_json['book_title'] = self.title
+            review_json['review_id'] = self.review_id
 
             array_JSON.append(review_json)
 
@@ -215,11 +237,16 @@ class Book:
         to this book object
         """
 
-        print (bcolors.OKBLUE + "\n\nUPLOADING REVIEWS FOR {}...".format(self.title) + bcolors.ENDC)
+        if self.isbn == "Missing":
+            print (bcolors.FAIL + "\n\nSKIPPED BOOK REASON:\n\t\t MISSING ISBN\n\n" + bcolors.ENDC)
+        if len(array_reviews) == 0:
+            print (bcolors.FAIL + "\n\nSKIPPED BOOK REASON:\n\t\t NO REVIEWS\n\n" + bcolors.ENDC)
+        else:
+            print (bcolors.OKBLUE + "\n\nUPLOADING REVIEWS FOR {}...".format(self.title) + bcolors.ENDC)
 
-        result= self.db.scraper_test.insert_many(array_reviews)
+            result= self.db.scraper_test.insert_many(array_reviews)
 
-        print (bcolors.OKGREEN + "COMPLETE\n\n" + bcolors.ENDC)
+            print (bcolors.OKGREEN + "COMPLETE\n\n" + bcolors.ENDC)
 
 
 def get_book_urls():
@@ -254,15 +281,19 @@ def main():
     # Get urls for top 199 books this month
     book_urls = get_book_urls()
 
+    # Create unique number for each review
+    count = 0
     #Upload top 199 books for this month
     for url in book_urls:
 
         print (url)
-        webScraperPage = Book(db, url)
+        webScraperPage = Book(db, url, count)
 
         book_reviews = Book.construct_JSON(webScraperPage)
 
         Book.upload(webScraperPage, book_reviews)
+
+        count += 1
 
     print("FINISHED IN: {:.2f} Seconds".format(time.process_time() - start))
 
